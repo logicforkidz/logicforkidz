@@ -22,32 +22,55 @@ import sys
 import select
 import pickle
 import socket
+
 if os.name == "nt": import msvcrt
 
 marshall = pickle.dumps
 unmarshall = pickle.loads
+eventHandlers = {}
+chatClient = None
+dbg = False
+
+# print debug messages only if debug is set
+def print_trace(*args):
+   if dbg: print(args)
 
 class ChatClient(object):
     """ A simple command line chat client using select """
 
-    def buildMessage(self, msg):
+    def buildMessage(self, text, to=""):
         m = {}
-        m['user'] = self.name
-        m['msg'] = msg
+        m['from'] = self.name
+        m['to'] = to
+        m['text'] = text
         return marshall(m)
 
-    def decodeMessage (self, msg):
+    def decodeMessage(self, msg):
         msg = unmarshall(msg)
-        return(msg['user'], msg['msg'])
+        return msg
+
+    # public function needs to validate the keys
+    def sendMessage(self, msg):
+        if 'text' in msg.keys(): text = msg['text']
+        else: text = ""
+        if 'to' in msg.keys(): to = msg['to']
+        else: to=""
+        m = self.buildMessage(text, to)
+        try:
+            self.sock.send(m)
+            return True
+        except:
+            return False
 
     def __init__(self, name, host='127.0.0.1', port=8007):
         self.name = name
-        # Quit flag
-        self.flag = False
         self.port = int(port)
         self.host = host
+        # Quit flag
+        self.flag = False
         # Initial prompt
-        self.prompt = '[' + '@'.join((name, socket.gethostname().split('.')[0])) + ']> '
+        #self.prompt = '[' + '@'.join((name, socket.gethostname().split('.')[0])) + ']> '
+        self.prompt = '>'
         # Connect to server at port
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -55,10 +78,13 @@ class ChatClient(object):
             self.sock.settimeout(.1)
             self.sock.connect((host, self.port))
             print('Connected to chat server@%d\n' % self.port)
+            # if event handler for connected is set call it.
+            if 'connected' in eventHandlers.keys(): eventHandlers['connected']()
             # Send my name...
-            self.sock.send(self.buildMessage('Hello'))
-            addr = ""
-            self.prompt = '[' + '@'.join((self.name, addr)) + ']> '
+            msg = {'text':'hello', 'to':'/'}
+            self.sendMessage(msg)
+            #addr = ""
+            #self.prompt = '[' + '@'.join((self.name, addr)) + ']> '
         except socket.error as e:
             print('Could not connect to chat server @%d\n' % self.port)
             sys.exit(1)
@@ -72,21 +98,26 @@ class ChatClient(object):
                     sys.stdout.flush()
                     print_prompt = False
 
-                # Wait for input from stdin & socket
+                # Wait for input from socket
                 inputready, outputready, exceptrdy = select.select([self.sock], [], [], .1)
                 for i in inputready:
                     if i == self.sock:
                         data = self.sock.recv(1024)
-                        user, msg = self.decodeMessage(data)
                         if not data:
+                            if 'disconnected' in eventHandlers.keys(): eventHandlers['disconnected']()
                             print('Shutting down.\n')
                             self.flag = True
                             break
                         else:
-                            sys.stdout.write( '\n[' + user + ']>')
-                            sys.stdout.write(' ' + msg + '\n')
-                            sys.stdout.flush()
+                            ret = -1
+                            msg = self.decodeMessage(data)
+                            # call server message event handler if it is set.
+                            if 'from_server' in eventHandlers.keys(): ret = eventHandlers['from_server'](msg)
+                            if ret != 0:
+                                print_trace(repr(msg))
                             print_prompt = True
+
+                # check for input from stdin (terminal)
                 data = None
                 if os.name == "nt":
                     if msvcrt.kbhit():
@@ -99,19 +130,70 @@ class ChatClient(object):
                             data = sys.stdin.readline().strip()
                             print_prompt = True
                 if data:
-                    data = self.buildMessage(data)
-                    self.sock.send(data)
+                    msg = {}
+                    msg['from'] = self.name
+                    msg['to'] = ''
+                    msg ['text'] = data
+                    ret = -1
+                    if 'from_terminal' in eventHandlers.keys():  ret = eventHandlers['from_terminal'](msg)
+                    if ret != 0: # we need to handle the message
+                        self.sendMessage(msg)
+
             except KeyboardInterrupt:
-                print ('Interrupted.\n')
+                if 'disconnected' in eventHandlers.keys(): eventHandlers['disconnected']()
+                print('Interrupted.\n')
                 self.sock.close()
                 break
 
 
+"""
+    chat_client_init(): Intialize the chatClient
+    
+    name = the username (required parameter)
+    server = ipaddress of the server (defaults to local host
+    port = port on which the server is listening
+    handlers = a dictionary of event handlers.
+"""
+def chat_client_init(name, server="127.0.0.1", port=8007, handlers={}, debug=False):
+    global chatClient, eventHandlers
+
+    #debug
+    global dbg
+    dbg = debug
+
+    # clean and store the handlers
+    k = ['connected', 'disconnected', 'from_server', 'from_terminal']
+    for i in k:
+        if i in handlers.keys():
+            if not callable(handlers[i]):
+                handlers.pop(i, None)
+    eventHandlers = handlers
+
+    #intialize the chatClient
+    chatClient = ChatClient(name, server, port)
+
+
+#will run the main command tool of the program.
+def chat_client_run():
+    global chatClient
+    if chatClient: chatClient.cmdloop()
+
+#send the specified message to the given user
+def chat_client_send_msg(msg):
+    global chatClient
+    if chatClient.sendMessage(msg): return True
+    return False
+
+#change the prompt to the specified prompt
+def chat_client_change_prompt(prompt='>'):
+    global chatClient
+    chatClient.prompt = prompt
+    sys.stdout.write('\n' + prompt)
+    sys.stdout.flush()
+
+"""
+    The code that will be executed if this module is run from command line 
+"""
 if __name__ == "__main__":
-
-    if len(sys.argv) < 3:
-        sys.exit('Usage: %s <your first name> <chat server ip address>'  % sys.argv[0])
-
-    client = ChatClient(sys.argv[1], sys.argv[2], 8007)
-    client.cmdloop()
-
+    chatClient = ChatClient("foo")
+    chatClient.cmdloop()

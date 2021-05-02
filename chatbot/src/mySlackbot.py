@@ -2,8 +2,13 @@
 The chatbotServer mnodule below provides 3 helper functions to build the chatbot server
 1. chatbot_server_init(): this function initializes the chatbot
 2. chatbot_server_run(): this function starts running the main loop to poll for messages. 
-3. chtnot_server_send_msg(user, msg): this function sends the given message to the specified user.
-                                      It will return True if successful, False otherwise
+3. chatbot_server_send_msg(msg): this function sends the given message to the specified user.
+                                It will return True if successful, False otherwise
+
+                                msg is a dictionary which can have 3 standard keys.
+                                    'to':   which user the message is/was sent
+                                    'from': who sent the message
+                                    'text': the string message.
 """
 import chatbotServer
 
@@ -14,6 +19,7 @@ def handle_new_user_connected (user):
     
     user is the string name of the user that connects
     """
+    print (user, " connected \n")
 
 
 
@@ -22,28 +28,41 @@ def handle_user_disconnected (user):
     This function is called when a new user connects to Slackbot
     user is the string name of the user that disconnected
     """
-    
+    print (user, " disconnected \n")
 
-def handle_msg_from_user(user, msg):
+
+def handle_msg_from_user(msg):
     """
     This function is called when a new user connects to Slackbot
 
     user is the string name of the user that sent the message
-    msg is the string message that the user sent. If the message is directed to 
-        a particular user then client should send is as:  ruch@ how are you?
-        If the message is directred to the chatbot  then the client should send
-        it as  /<command>. For example, in order to find out who all are connected
-        the client can send a command  /directory. You will need to parse these messages 
-        and implement the functionality yourself. By default, the chatbot_server
-        sends any message it receives to everyone else who is connected to it. 
-        If you have handled the message and you don't want server to do anything with it
-        then this function should return 0. But if you cannot handle this message
-        and let the server forward it to everyone else, then return -1
+    msg is a dictionary. See notes above for details.
+
+    By default, the chatbot_server forwards any message it receives to everyone else who is connected to it.
+    If you have handled the message and you don't want server to do anything with it
+    then this function should return 0. But return anything other than 0 for the server do its default processing
     """
+    print ("received: ",  repr(msg), "\n")
     return -1
-    
+
+
+#parse command line arguments
+import argparse
+import sys
+parser = argparse.ArgumentParser(description="A chat server")
+parser.add_argument('--debug', help='enable debug trace messages', default=False, action='store_true')
+parser.add_argument('--port', dest='port', help='server port number', default=8007)
+args = parser.parse_args(sys.argv[1:])
+print ("Starting server at port ", args.port, 'with debug ', args.debug, "\n")
+
 # Intialize the chatbot server
-chatbotServer.chatbot_server_init(handle_new_user_connected, handle_user_disconnected, handle_msg_from_user)
+myEventHandlers = {}
+myEventHandlers ["connected"] = handle_new_user_connected
+myEventHandlers["disconnected"] = handle_user_disconnected
+myEventHandlers["from_user"] = handle_msg_from_user
+
+# Intialize the chatbot server
+chatbotServer.chatbot_server_init(args, myEventHandlers)
 
 # run the main loop of the server
 chatbotServer.chatbot_server_run()
