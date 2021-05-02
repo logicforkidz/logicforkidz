@@ -65,12 +65,12 @@ class MyChat(basic.LineReceiver):
             return
         # tell everyone we lost a user
         for key in self.factory.clientmap.keys():
-            print_trace("Ankur CA: looping keys user=", repr(user), '\n')
+            #print_trace("Ankur CA: looping keys user=", repr(user), '\n')
             if key == user: continue
             if key == self: continue
-            print_trace("Ankur CA: found another user")
+            #print_trace("Ankur CA: found another user")
             if isinstance(key, MyChat):
-                print_trace("Ankur CA: sending message")
+                #print_trace("Ankur CA: sending message")
                 to_user = self.factory.clientmap[key]
                 msg = encodeMessage({'to': to_user, 'text': 'User ' + user + ' disconnected'})
                 self.factory.clientmap[to_user].sendLine(msg)
@@ -100,13 +100,13 @@ class MyChat(basic.LineReceiver):
             msg = encodeMessage({'to': user, 'text': 'Hello ' + user})
             if msg: self.sendLine(msg)
             for key in self.factory.clientmap.keys():
-                print_trace ("Ankur CA: looping keys user=", repr(key))
+                #print_trace ("Ankur CA: looping keys user=", repr(key))
                 if key == user: continue
                 if key == self: continue
-                print_trace("Ankur CA: found another user", repr(key))
+                #print_trace("Ankur CA: found another user", repr(key))
                 if isinstance(key, MyChat):
                     to_user = self.factory.clientmap[key]
-                    print_trace("Ankur CA: sending message to ", to_user)
+                    #print_trace("Ankur CA: sending message to ", to_user)
                     msg = encodeMessage({'to':to_user, 'text': 'User ' + user + ' joined'})
                     self.factory.clientmap[to_user].sendLine(msg)
         else: # client was already in the map
